@@ -1,0 +1,1394 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Advanced Mine Ventilation 3D Monitoring</title>
+    <link href="https://fonts.googleapis.com/css2?family=Montserrat:wght@400;600;700&family=Roboto:wght@300;400;500&display=swap" rel="stylesheet">
+    <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/three.js/r128/three.min.js"></script>
+    <script src="https://cdn.jsdelivr.net/npm/three@0.128.0/examples/js/controls/OrbitControls.min.js"></script>
+    <style>
+        :root {
+            --primary-dark: #0f172a;
+            --secondary-dark: #1e293b;
+            --accent-blue: #3b82f6;
+            --accent-green: #10b981;
+            --accent-yellow: #f59e0b;
+            --accent-red: #ef4444;
+            --text-light: #f8fafc;
+            --text-muted: #94a3b8;
+        }
+        
+        body {
+            font-family: 'Montserrat', sans-serif;
+            background-color: var(--primary-dark);
+            color: var(--text-light);
+            margin: 0;
+            padding: 0;
+            overflow-x: hidden;
+        }
+        
+        /* 3D VISUALIZATION CONTAINER */
+        .visualization-container {
+            display: grid;
+            grid-template-columns: 1fr 1fr;
+            gap: 20px;
+            margin-bottom: 30px;
+            height: 400px;
+        }
+        
+        .visualization-panel {
+            position: relative;
+            width: 100%;
+            height: 100%;
+            background: linear-gradient(to bottom, #0a0e17, #1a263f);
+            border-radius: 12px;
+            overflow: hidden;
+            box-shadow: 0 10px 30px rgba(0,0,0,0.5);
+        }
+        
+        .visualization-panel h3 {
+            position: absolute;
+            top: 15px;
+            left: 15px;
+            margin: 0;
+            z-index: 10;
+            background: rgba(15, 23, 42, 0.7);
+            padding: 8px 15px;
+            border-radius: 6px;
+            border-left: 3px solid var(--accent-blue);
+        }
+        
+        .mine3d-canvas, .haulage3d-canvas {
+            position: absolute;
+            top: 0;
+            left: 0;
+            width: 100%;
+            height: 100%;
+        }
+        
+        .mine-level-info {
+            position: absolute;
+            bottom: 20px;
+            left: 20px;
+            background: rgba(15, 23, 42, 0.8);
+            padding: 15px;
+            border-radius: 8px;
+            border-left: 4px solid var(--accent-blue);
+            z-index: 10;
+            max-width: 300px;
+        }
+        
+        .mine-level-info h2 {
+            margin: 0 0 5px 0;
+            font-size: 18px;
+        }
+        
+        .mine-level-info p {
+            margin: 0;
+            color: var(--text-muted);
+            font-size: 14px;
+            line-height: 1.4;
+        }
+        
+        /* NAVIGATION */
+        .level-nav {
+            background: var(--secondary-dark);
+            padding: 15px 20px;
+            display: flex;
+            overflow-x: auto;
+            gap: 10px;
+            box-shadow: 0 2px 10px rgba(0,0,0,0.3);
+            position: relative;
+            z-index: 20;
+        }
+        
+        .level-link {
+            padding: 8px 15px;
+            background: rgba(59, 130, 246, 0.1);
+            border-radius: 6px;
+            color: var(--accent-blue);
+            text-decoration: none;
+            font-weight: 600;
+            font-size: 14px;
+            white-space: nowrap;
+            border: 1px solid rgba(59, 130, 246, 0.3);
+            transition: all 0.3s;
+        }
+        
+        .level-link:hover {
+            background: var(--accent-blue);
+            color: white;
+            transform: translateY(-2px);
+        }
+        
+        .level-link.active {
+            background: var(--accent-blue);
+            color: white;
+            box-shadow: 0 0 15px rgba(59, 130, 246, 0.7);
+            transform: translateY(-2px);
+        }
+        
+        .dashboard-container {
+            max-width: 1400px;
+            margin: 0 auto;
+            padding: 20px;
+            position: relative;
+            z-index: 10;
+        }
+        
+        /* GAUGES CONTAINER */
+        .gauges-container {
+            display: grid;
+            grid-template-columns: repeat(auto-fit, minmax(240px, 1fr));
+            gap: 20px;
+            margin-bottom: 30px;
+        }
+        
+        .gauge-card {
+            background: var(--secondary-dark);
+            border-radius: 12px;
+            padding: 20px;
+            box-shadow: 0 8px 25px rgba(0, 0, 0, 0.3);
+            text-align: center;
+            border-left: 4px solid var(--accent-blue);
+            transition: all 0.3s;
+            position: relative;
+            overflow: hidden;
+        }
+        
+        .gauge-card::before {
+            content: '';
+            position: absolute;
+            top: -50%;
+            left: -50%;
+            width: 200%;
+            height: 200%;
+            background: radial-gradient(circle, rgba(59,130,246,0.1) 0%, rgba(0,0,0,0) 70%);
+            opacity: 0;
+            transition: opacity 0.3s;
+        }
+        
+        .gauge-card:hover {
+            transform: translateY(-5px);
+            box-shadow: 0 12px 30px rgba(0, 0, 0, 0.4);
+        }
+        
+        .gauge-card:hover::before {
+            opacity: 1;
+        }
+        
+        .gauge-title {
+            font-weight: 600;
+            margin-bottom: 15px;
+            color: var(--text-muted);
+            font-size: 16px;
+        }
+        
+        .gauge-value {
+            font-size: 28px;
+            font-weight: 700;
+            margin: 10px 0;
+            background: linear-gradient(90deg, var(--accent-blue), var(--accent-green));
+            -webkit-background-clip: text;
+            -webkit-text-fill-color: transparent;
+        }
+        
+        .gauge-status {
+            padding: 6px 12px;
+            border-radius: 20px;
+            font-size: 14px;
+            font-weight: 600;
+            display: inline-block;
+        }
+        
+        .status-good { background-color: rgba(16, 185, 129, 0.2); color: var(--accent-green); }
+        .status-warning { background-color: rgba(245, 158, 11, 0.2); color: var(--accent-yellow); }
+        .status-danger { background-color: rgba(239, 68, 68, 0.2); color: var(--accent-red); }
+        
+        /* TRENDS CONTAINER */
+        .trends-vertical {
+            background: var(--secondary-dark);
+            border-radius: 12px;
+            padding: 25px;
+            box-shadow: 0 8px 25px rgba(0, 0, 0, 0.3);
+            margin-bottom: 30px;
+            position: relative;
+            overflow: hidden;
+        }
+        
+        .trends-vertical::before {
+            content: '';
+            position: absolute;
+            top: 0;
+            left: 0;
+            width: 100%;
+            height: 100%;
+            background: radial-gradient(circle at 20% 30%, rgba(59,130,246,0.05) 0%, rgba(0,0,0,0) 70%);
+            pointer-events: none;
+        }
+        
+        .trend-header {
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            margin-bottom: 20px;
+        }
+        
+        .trend-title {
+            font-size: 20px;
+            font-weight: 700;
+            margin: 0;
+            background: linear-gradient(90deg, var(--accent-blue), var(--accent-green));
+            -webkit-background-clip: text;
+            -webkit-text-fill-color: transparent;
+        }
+        
+        .time-period-selector {
+            display: flex;
+            gap: 10px;
+        }
+        
+        .time-period-btn {
+            padding: 8px 16px;
+            border: none;
+            background: rgba(59, 130, 246, 0.2);
+            color: var(--accent-blue);
+            border-radius: 6px;
+            cursor: pointer;
+            font-size: 14px;
+            font-weight: 600;
+            transition: all 0.3s;
+        }
+        
+        .time-period-btn:hover {
+            transform: translateY(-2px);
+        }
+        
+        .time-period-btn.active {
+            background: var(--accent-blue);
+            color: white;
+            box-shadow: 0 0 15px rgba(59, 130, 246, 0.4);
+        }
+        
+        .chart-container {
+            height: 300px;
+            margin-bottom: 30px;
+        }
+        
+        /* ALERTS SECTION */
+        .alerts-section {
+            background: var(--secondary-dark);
+            border-radius: 12px;
+            padding: 25px;
+            box-shadow: 0 8px 25px rgba(0, 0, 0, 0.3);
+            position: relative;
+            overflow: hidden;
+        }
+        
+        .alerts-section::before {
+            content: '';
+            position: absolute;
+            top: 0;
+            left: 0;
+            width: 100%;
+            height: 100%;
+            background: radial-gradient(circle at 80% 20%, rgba(239,68,68,0.05) 0%, rgba(0,0,0,0) 70%);
+            pointer-events: none;
+        }
+        
+        .alert-item {
+            padding: 16px;
+            border-left: 4px solid;
+            margin-bottom: 12px;
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            background: rgba(30, 41, 59, 0.6);
+            border-radius: 8px;
+            transition: all 0.3s;
+            position: relative;
+            overflow: hidden;
+        }
+        
+        .alert-item:hover {
+            transform: translateX(5px);
+            box-shadow: 0 5px 15px rgba(0,0,0,0.2);
+        }
+        
+        .alert-item::before {
+            content: '';
+            position: absolute;
+            top: 0;
+            left: 0;
+            width: 100%;
+            height: 100%;
+            background: linear-gradient(90deg, rgba(255,255,255,0.03) 0%, rgba(255,255,255,0) 100%);
+            pointer-events: none;
+        }
+        
+        .alert-warning { border-color: var(--accent-yellow); }
+        .alert-danger { border-color: var(--accent-red); }
+        
+        .alert-message { font-weight: 600; }
+        .alert-time { font-size: 12px; color: var(--text-muted); }
+        
+        .alert-btn {
+            padding: 6px 12px;
+            border: none;
+            border-radius: 6px;
+            font-weight: 600;
+            cursor: pointer;
+            transition: all 0.3s;
+        }
+        
+        .alert-btn:hover {
+            transform: translateY(-2px);
+            box-shadow: 0 3px 10px rgba(0,0,0,0.2);
+        }
+        
+        .alert-btn-warning {
+            background: rgba(245, 158, 11, 0.2);
+            color: var(--accent-yellow);
+        }
+        
+        .alert-btn-danger {
+            background: rgba(239, 68, 68, 0.2);
+            color: var(--accent-red);
+        }
+        
+        /* DASHBOARD HEADER */
+        .dashboard-header {
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            margin-bottom: 30px;
+            position: relative;
+            z-index: 10;
+        }
+        
+        .dashboard-header h1 {
+            font-size: 32px;
+            font-weight: 700;
+            margin: 0;
+            background: linear-gradient(90deg, var(--accent-blue), var(--accent-green));
+            -webkit-background-clip: text;
+            -webkit-text-fill-color: transparent;
+            text-shadow: 0 2px 10px rgba(59, 130, 246, 0.3);
+        }
+        
+        .status-indicators {
+            display: flex;
+            gap: 15px;
+        }
+        
+        .status-indicator {
+            display: flex;
+            align-items: center;
+            gap: 8px;
+            font-size: 14px;
+            padding: 8px 12px;
+            border-radius: 6px;
+            background: rgba(30, 41, 59, 0.6);
+            transition: all 0.3s;
+        }
+        
+        .status-indicator:hover {
+            background: rgba(59, 130, 246, 0.2);
+            transform: translateY(-2px);
+        }
+        
+        .indicator {
+            width: 12px;
+            height: 12px;
+            border-radius: 50%;
+        }
+        
+        .indicator.green { background-color: var(--accent-green); box-shadow: 0 0 10px var(--accent-green); }
+        .indicator.yellow { background-color: var(--accent-yellow); box-shadow: 0 0 10px var(--accent-yellow); }
+        .indicator.red { background-color: var(--accent-red); box-shadow: 0 0 10px var(--accent-red); }
+        
+        /* VENTILATION VISUALIZATION */
+        .vent-arrow {
+            position: absolute;
+            width: 0;
+            height: 0;
+            border-left: 10px solid transparent;
+            border-right: 10px solid transparent;
+            border-bottom: 20px solid rgba(59, 130, 246, 0.7);
+            animation: float 2s infinite ease-in-out;
+        }
+        
+        @keyframes float {
+            0%, 100% { transform: translateY(0); }
+            50% { transform: translateY(-10px); }
+        }
+        
+        /* CONTROL PANEL */
+        .control-panel {
+            position: absolute;
+            top: 15px;
+            right: 15px;
+            z-index: 10;
+            display: flex;
+            gap: 10px;
+        }
+        
+        .control-btn {
+            background: rgba(30, 41, 59, 0.8);
+            border: none;
+            color: white;
+            padding: 8px 12px;
+            border-radius: 6px;
+            cursor: pointer;
+            font-size: 12px;
+            font-weight: 600;
+            display: flex;
+            align-items: center;
+            gap: 5px;
+        }
+        
+        .control-btn:hover {
+            background: rgba(59, 130, 246, 0.8);
+        }
+        
+        canvas {
+            max-width: 100%;
+        }
+    </style>
+</head>
+<body>
+    <!-- LEVEL NAVIGATION -->
+    <div class="level-nav">
+        <a href="#2200" class="level-link">2200ml (Main Access)</a>
+        <a href="#2500" class="level-link">2500ml (Ventilation Shaft)</a>
+        <a href="#2800" class="level-link">2800ml (Ore Pass)</a>
+        <a href="#3100" class="level-link">3100ml (Crusher Station)</a>
+        <a href="#3360" class="level-link active">3360ml (Loader Workshop)</a>
+        <a href="#3700" class="level-link">3700ml (Production Zone)</a>
+        <a href="#4000" class="level-link">4000ml (Refueling Bay)</a>
+        <a href="#4300" class="level-link">4300ml (Service Area)</a>
+        <a href="#4600" class="level-link">4600ml (Longwall Face)</a>
+        <a href="#4900" class="level-link">4900ml (Deep Extraction)</a>
+    </div>
+    
+    <!-- 3D VISUALIZATION CONTAINER -->
+    <div class="visualization-container">
+        <div class="visualization-panel">
+            <h3>Mine Ventilation Visualization</h3>
+            <div class="control-panel">
+                <button class="control-btn" id="resetView">
+                    <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                        <path d="M3 12a9 9 0 0 1 9-9 9 9 0 0 1 9 9 9 9 0 0 1-9 9 9 9 0 0 1-9-9z"></path>
+                        <circle cx="12" cy="12" r="1"></circle>
+                        <path d="M12 3v2"></path>
+                        <path d="M12 19v2"></path>
+                        <path d="M3 12h2"></path>
+                        <path d="M19 12h2"></path>
+                    </svg>
+                    Reset View
+                </button>
+                <button class="control-btn" id="toggleVentilation">
+                    <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                        <path d="M13 2L3 14h9l-1 8 10-12h-9l1-8z"></path>
+                    </svg>
+                    Airflow
+                </button>
+            </div>
+            <canvas id="mine3d-canvas" class="mine3d-canvas"></canvas>
+            <div class="mine-level-info">
+                <h2>3360ml Level - Loader Workshop</h2>
+                <p>Airflow: 120 m³/s | Velocity: 2.4 m/s<br>
+                Pressure: 1.2 kPa | Temp: 22°C</p>
+            </div>
+        </div>
+        
+        <div class="visualization-panel">
+            <h3>Haulage & Environmental Monitoring</h3>
+            <div class="control-panel">
+                <button class="control-btn" id="resetHaulageView">
+                    <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                        <path d="M3 12a9 9 0 0 1 9-9 9 9 0 0 1 9 9 9 9 0 0 1-9 9 9 9 0 0 1-9-9z"></path>
+                        <circle cx="12" cy="12" r="1"></circle>
+                        <path d="M12 3v2"></path>
+                        <path d="M12 19v2"></path>
+                        <path d="M3 12h2"></path>
+                        <path d="M19 12h2"></path>
+                    </svg>
+                    Reset View
+                </button>
+                <button class="control-btn" id="toggleGraph">
+                    <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                        <path d="M3 3v18h18"></path>
+                        <path d="M19 9l-5 5-4-4-3 3"></path>
+                    </svg>
+                    Toggle Graph
+                </button>
+            </div>
+            <canvas id="haulage3d-canvas" class="haulage3d-canvas"></canvas>
+            <div class="mine-level-info" style="left: auto; right: 20px;">
+                <h2>Haulage Tunnel</h2>
+                <p>Gas: 0.8% CO | Dust: 1.2 mg/m³<br>
+                Vehicles: 3 active | Status: Operational</p>
+            </div>
+        </div>
+    </div>
+    
+    <div class="dashboard-container">
+        <div class="dashboard-header">
+            <h1>Advanced Mine Ventilation 3D Monitoring</h1>
+            <div class="status-indicators">
+                <div class="status-indicator">
+                    <div class="indicator green"></div>
+                    <span>Normal</span>
+                </div>
+                <div class="status-indicator">
+                    <div class="indicator yellow"></div>
+                    <span>Warning</span>
+                </div>
+                <div class="status-indicator">
+                    <div class="indicator red"></div>
+                    <span>Critical</span>
+                </div>
+            </div>
+        </div>
+        
+        <!-- GAUGES SECTION -->
+        <div class="gauges-container">
+            <div class="gauge-card">
+                <div class="gauge-title">Airflow Rate</div>
+                <canvas id="airflowGauge"></canvas>
+                <div class="gauge-value">120 m³/s</div>
+                <div class="gauge-status status-good">Optimal</div>
+            </div>
+            
+            <div class="gauge-card">
+                <div class="gauge-title">Gas Concentration</div>
+                <canvas id="gasGauge"></canvas>
+                <div class="gauge-value">0.8%</div>
+                <div class="gauge-status status-good">Safe</div>
+            </div>
+            
+            <div class="gauge-card">
+                <div class="gauge-title">Dust Levels</div>
+                <canvas id="dustGauge"></canvas>
+                <div class="gauge-value">1.2 mg/m³</div>
+                <div class="gauge-status status-warning">Moderate</div>
+            </div>
+            
+            <div class="gauge-card">
+                <div class="gauge-title">Ventilation Pressure</div>
+                <canvas id="pressureGauge"></canvas>
+                <div class="gauge-value">1.2 kPa</div>
+                <div class="gauge-status status-good">Normal</div>
+            </div>
+        </div>
+        
+        <!-- TRENDS CONTAINER -->
+        <div class="trends-vertical">
+            <div class="trend-header">
+                <h2 class="trend-title">Environmental Trends</h2>
+                <div class="time-period-selector">
+                    <button class="time-period-btn active" onclick="changeTrendPeriod('day')">24 Hours</button>
+                    <button class="time-period-btn" onclick="changeTrendPeriod('week')">7 Days</button>
+                    <button class="time-period-btn" onclick="changeTrendPeriod('month')">30 Days</button>
+                </div>
+            </div>
+            
+            <!-- Airflow Trend -->
+            <div class="chart-container">
+                <canvas id="airflowTrend"></canvas>
+            </div>
+            
+            <!-- Gas Trend -->
+            <div class="chart-container">
+                <canvas id="gasTrend"></canvas>
+            </div>
+            
+            <!-- Dust Trend -->
+            <div class="chart-container">
+                <canvas id="dustTrend"></canvas>
+            </div>
+        </div>
+        
+        <!-- ALERTS SECTION -->
+        <div class="alerts-section">
+            <h2 class="trend-title">System Alerts</h2>
+            
+            <div class="alert-item alert-warning">
+                <div>
+                    <div class="alert-message">Elevated dust levels in Loader Workshop (3360ml)</div>
+                    <div class="alert-time">10 minutes ago</div>
+                </div>
+                <button class="alert-btn alert-btn-warning">Review</button>
+            </div>
+            
+            <div class="alert-item alert-danger">
+                <div>
+                    <div class="alert-message">Ventilation fan #3 reduced efficiency in 3360ml</div>
+                    <div class="alert-time">25 minutes ago</div>
+                </div>
+                <button class="alert-btn alert-btn-danger">Emergency</button>
+            </div>
+            
+            <div class="alert-item alert-warning">
+                <div>
+                    <div class="alert-message">Temperature fluctuation in Haulage Tunnel</div>
+                    <div class="alert-time">1 hour ago</div>
+                </div>
+                <button class="alert-btn alert-btn-warning">Review</button>
+            </div>
+        </div>
+    </div>
+    
+    <script>
+        // ===== 3D MINE VISUALIZATION =====
+        let mineScene, mineCamera, mineRenderer, mineControls;
+        let haulageScene, haulageCamera, haulageRenderer, haulageControls;
+        let showVentilation = true;
+        let ventilationArrows = [];
+        let show3DGraph = true;
+        let graphLines = [];
+        
+        function init3DMine() {
+            const container = document.getElementById('mine3d-canvas').parentElement;
+            const canvas = document.getElementById('mine3d-canvas');
+            
+            // Scene setup
+            mineScene = new THREE.Scene();
+            mineScene.background = new THREE.Color(0x0a0e17);
+            mineScene.fog = new THREE.Fog(0x0a0e17, 10, 50);
+            
+            // Camera
+            mineCamera = new THREE.PerspectiveCamera(75, container.clientWidth / container.clientHeight, 0.1, 1000);
+            mineCamera.position.set(0, 15, 30);
+            
+            // Renderer
+            mineRenderer = new THREE.WebGLRenderer({ canvas, antialias: true });
+            mineRenderer.setSize(container.clientWidth, container.clientHeight);
+            mineRenderer.shadowMap.enabled = true;
+            
+            // Controls
+            mineControls = new THREE.OrbitControls(mineCamera, mineRenderer.domElement);
+            mineControls.enableDamping = true;
+            mineControls.dampingFactor = 0.05;
+            mineControls.minDistance = 15;
+            mineControls.maxDistance = 50;
+            mineControls.maxPolarAngle = Math.PI * 0.8;
+            
+            // Lighting
+            const ambientLight = new THREE.AmbientLight(0x404040, 0.5);
+            mineScene.add(ambientLight);
+            
+            const directionalLight = new THREE.DirectionalLight(0xffffff, 0.8);
+            directionalLight.position.set(5, 10, 7);
+            directionalLight.castShadow = true;
+            directionalLight.shadow.mapSize.width = 1024;
+            directionalLight.shadow.mapSize.height = 1024;
+            mineScene.add(directionalLight);
+            
+            // Mine tunnel - More detailed with cross-section
+            const tunnelShape = new THREE.Shape();
+            const radius = 10;
+            const segments = 16;
+            
+            tunnelShape.moveTo(radius, 0);
+            for (let i = 0; i <= segments; i++) {
+                const angle = (i / segments) * Math.PI * 2;
+                tunnelShape.lineTo(
+                    Math.cos(angle) * radius,
+                    Math.sin(angle) * radius
+                );
+            }
+            
+            const tunnelGeometry = new THREE.ExtrudeGeometry(tunnelShape, {
+                steps: 1,
+                depth: 50,
+                bevelEnabled: false,
+                curveSegments: 32
+            });
+            
+            tunnelGeometry.rotateX(Math.PI / 2);
+            tunnelGeometry.translate(0, 0, -25);
+            
+            const tunnelMaterial = new THREE.MeshStandardMaterial({ 
+                color: 0x4a5a7b,
+                roughness: 0.7,
+                metalness: 0.1
+            });
+            
+            const tunnel = new THREE.Mesh(tunnelGeometry, tunnelMaterial);
+            tunnel.receiveShadow = true;
+            mineScene.add(tunnel);
+            
+            // Rock bolts
+            const boltGeometry = new THREE.CylinderGeometry(0.1, 0.1, 3, 8);
+            const boltMaterial = new THREE.MeshStandardMaterial({ color: 0xaaaaaa });
+            
+            for (let i = 0; i < 12; i++) {
+                const angle = (i / 12) * Math.PI * 2;
+                const x = Math.cos(angle) * (radius - 0.5);
+                const y = Math.sin(angle) * (radius - 0.5);
+                
+                const bolt = new THREE.Mesh(boltGeometry, boltMaterial);
+                bolt.position.set(x, y, 0);
+                bolt.rotation.z = Math.PI / 2;
+                bolt.rotation.y = angle;
+                mineScene.add(bolt);
+            }
+            
+            // Ventilation duct
+            const ductGeometry = new THREE.TorusGeometry(1, 0.3, 16, 32, Math.PI * 1.5);
+            ductGeometry.rotateY(Math.PI / 2);
+            const ductMaterial = new THREE.MeshStandardMaterial({ color: 0x3b82f6 });
+            
+            const duct = new THREE.Mesh(ductGeometry, ductMaterial);
+            duct.position.set(0, radius - 2, 0);
+            duct.rotation.z = Math.PI / 2;
+            mineScene.add(duct);
+            
+            // Ventilation arrows
+            createVentilationArrows();
+            
+            // Animation
+            function animate() {
+                requestAnimationFrame(animate);
+                mineControls.update();
+                
+                // Update ventilation arrows
+                if (showVentilation) {
+                    ventilationArrows.forEach(arrow => {
+                        arrow.position.z += 0.2;
+                        if (arrow.position.z > 25) {
+                            arrow.position.z = -25;
+                        }
+                    });
+                }
+                
+                mineRenderer.render(mineScene, mineCamera);
+            }
+            
+            animate();
+            
+            // Handle resize
+            window.addEventListener('resize', () => {
+                mineCamera.aspect = container.clientWidth / container.clientHeight;
+                mineCamera.updateProjectionMatrix();
+                mineRenderer.setSize(container.clientWidth, container.clientHeight);
+            });
+            
+            // Reset view button
+            document.getElementById('resetView').addEventListener('click', () => {
+                mineCamera.position.set(0, 15, 30);
+                mineControls.target.set(0, 0, 0);
+                mineControls.update();
+            });
+            
+            // Toggle ventilation visualization
+            document.getElementById('toggleVentilation').addEventListener('click', () => {
+                showVentilation = !showVentilation;
+                ventilationArrows.forEach(arrow => {
+                    arrow.visible = showVentilation;
+                });
+                document.getElementById('toggleVentilation').style.background = 
+                    showVentilation ? 'rgba(59, 130, 246, 0.8)' : 'rgba(30, 41, 59, 0.8)';
+            });
+        }
+        
+        function createVentilationArrows() {
+            const arrowGeometry = new THREE.ConeGeometry(0.3, 1.5, 4);
+            arrowGeometry.rotateX(Math.PI / 2);
+            const arrowMaterial = new THREE.MeshBasicMaterial({ 
+                color: 0x3b82f6,
+                transparent: true,
+                opacity: 0.8
+            });
+            
+            for (let i = 0; i < 15; i++) {
+                const angle = (i / 15) * Math.PI * 2;
+                const radius = 7;
+                const x = Math.cos(angle) * radius;
+                const y = Math.sin(angle) * radius;
+                
+                const arrow = new THREE.Mesh(arrowGeometry, arrowMaterial);
+                arrow.position.set(x, y, -25 + Math.random() * 50);
+                arrow.rotation.z = angle;
+                mineScene.add(arrow);
+                ventilationArrows.push(arrow);
+            }
+        }
+        
+        // ===== 3D HAULAGE VISUALIZATION =====
+        function init3DHaulage() {
+            const container = document.getElementById('haulage3d-canvas').parentElement;
+            const canvas = document.getElementById('haulage3d-canvas');
+            
+            // Scene setup
+            haulageScene = new THREE.Scene();
+            haulageScene.background = new THREE.Color(0x0a0e17);
+            haulageScene.fog = new THREE.Fog(0x0a0e17, 10, 50);
+            
+            // Camera
+            haulageCamera = new THREE.PerspectiveCamera(75, container.clientWidth / container.clientHeight, 0.1, 1000);
+            haulageCamera.position.set(0, 10, 25);
+            
+            // Renderer
+            haulageRenderer = new THREE.WebGLRenderer({ canvas, antialias: true });
+            haulageRenderer.setSize(container.clientWidth, container.clientHeight);
+            haulageRenderer.shadowMap.enabled = true;
+            
+            // Controls
+            haulageControls = new THREE.OrbitControls(haulageCamera, haulageRenderer.domElement);
+            haulageControls.enableDamping = true;
+            haulageControls.dampingFactor = 0.05;
+            haulageControls.minDistance = 15;
+            haulageControls.maxDistance = 40;
+            haulageControls.maxPolarAngle = Math.PI * 0.8;
+            
+            // Lighting
+            const ambientLight = new THREE.AmbientLight(0x404040, 0.5);
+            haulageScene.add(ambientLight);
+            
+            const directionalLight = new THREE.DirectionalLight(0xffffff, 0.8);
+            directionalLight.position.set(5, 10, 7);
+            directionalLight.castShadow = true;
+            haulageScene.add(directionalLight);
+            
+            // Haulage tunnel
+            const tunnelShape = new THREE.Shape();
+            const width = 8;
+            const height = 6;
+            
+            tunnelShape.moveTo(-width/2, -height/2);
+            tunnelShape.lineTo(width/2, -height/2);
+            tunnelShape.lineTo(width/2, height/2);
+            tunnelShape.lineTo(-width/2, height/2);
+            
+            const tunnelGeometry = new THREE.ExtrudeGeometry(tunnelShape, {
+                steps: 1,
+                depth: 50,
+                bevelEnabled: false,
+                curveSegments: 1
+            });
+            
+            tunnelGeometry.rotateX(Math.PI / 2);
+            tunnelGeometry.translate(0, 0, -25);
+            
+            const tunnelMaterial = new THREE.MeshStandardMaterial({ 
+                color: 0x5a6a8b,
+                roughness: 0.8,
+                metalness: 0.1
+            });
+            
+            const tunnel = new THREE.Mesh(tunnelGeometry, tunnelMaterial);
+            tunnel.receiveShadow = true;
+            haulageScene.add(tunnel);
+            
+            // Haulage tracks
+            const trackGeometry = new THREE.BoxGeometry(0.5, 0.2, 50);
+            const trackMaterial = new THREE.MeshStandardMaterial({ color: 0xaaaaaa });
+            
+            const leftTrack = new THREE.Mesh(trackGeometry, trackMaterial);
+            leftTrack.position.set(-3, -height/2 + 0.1, 0);
+            leftTrack.receiveShadow = true;
+            haulageScene.add(leftTrack);
+            
+            const rightTrack = new THREE.Mesh(trackGeometry, trackMaterial);
+            rightTrack.position.set(3, -height/2 + 0.1, 0);
+            rightTrack.receiveShadow = true;
+            haulageScene.add(rightTrack);
+            
+            // Mine carts
+            const carts = [];
+            const cartGeometry = createMineCartGeometry();
+            const cartMaterial = new THREE.MeshStandardMaterial({ 
+                color: 0x8b4513,
+                roughness: 0.7,
+                metalness: 0.3
+            });
+            
+            for (let i = 0; i < 3; i++) {
+                const cart = new THREE.Mesh(cartGeometry, cartMaterial);
+                cart.position.z = -15 + i * 15;
+                cart.castShadow = true;
+                haulageScene.add(cart);
+                carts.push(cart);
+            }
+            
+            // Gas visualization
+            const gasGeometry = new THREE.SphereGeometry(1.2, 16, 16);
+            const gasMaterial = new THREE.MeshBasicMaterial({ 
+                color: 0x00ff00,
+                transparent: true,
+                opacity: 0.6
+            });
+            const gas = new THREE.Mesh(gasGeometry, gasMaterial);
+            gas.position.set(-2, 1, 0);
+            haulageScene.add(gas);
+            
+            // Dust visualization
+            const dustGeometry = new THREE.SphereGeometry(1.0, 16, 16);
+            const dustMaterial = new THREE.MeshBasicMaterial({ 
+                color: 0xf5a623,
+                transparent: true,
+                opacity: 0.6
+            });
+            const dust = new THREE.Mesh(dustGeometry, dustMaterial);
+            dust.position.set(2, 1, 0);
+            haulageScene.add(dust);
+            
+            // Conveyor belt
+            const conveyorGeometry = new THREE.BoxGeometry(5, 0.3, 40);
+            const conveyorMaterial = new THREE.MeshStandardMaterial({ color: 0x333333 });
+            const conveyor = new THREE.Mesh(conveyorGeometry, conveyorMaterial);
+            conveyor.position.set(0, -height/2 + 0.5, 0);
+            haulageScene.add(conveyor);
+            
+            // Create 3D graph
+            create3DGraph();
+            
+            // Animation
+            function animate() {
+                requestAnimationFrame(animate);
+                haulageControls.update();
+                
+                // Move carts
+                carts.forEach((cart, index) => {
+                    cart.position.z += 0.1;
+                    if (cart.position.z > 25) {
+                        cart.position.z = -25;
+                    }
+                    
+                    // Bounce effect
+                    cart.position.y = -height/2 + 1.5 + Math.sin(Date.now() * 0.001 + index) * 0.1;
+                });
+                
+                // Update gas and dust positions to follow first cart
+                gas.position.z = carts[0].position.z;
+                dust.position.z = carts[0].position.z;
+                
+                // Change colors based on simulated values
+                const gasValue = 0.5 + 0.3 * Math.sin(Date.now() * 0.001);
+                const dustValue = 1.0 + 0.5 * Math.sin(Date.now() * 0.0007);
+                
+                gasMaterial.color.setHSL(0.3, 1, 0.5 - gasValue * 0.2);
+                dustMaterial.color.setHSL(0.1, 1, 0.6 - dustValue * 0.1);
+                
+                // Update info display
+                document.querySelector('.mine-level-info:nth-of-type(2) p').textContent = 
+                    `Gas: ${gasValue.toFixed(1)}% CO | Dust: ${dustValue.toFixed(1)} mg/m³\n` +
+                    `Vehicles: 3 active | Status: ${gasValue > 0.7 || dustValue > 1.3 ? 'Warning' : 'Operational'}`;
+                
+                // Update 3D graph data
+                if (show3DGraph) {
+                    update3DGraph(gasValue, dustValue);
+                }
+                
+                haulageRenderer.render(haulageScene, haulageCamera);
+            }
+            
+            animate();
+            
+            // Handle resize
+            window.addEventListener('resize', () => {
+                haulageCamera.aspect = container.clientWidth / container.clientHeight;
+                haulageCamera.updateProjectionMatrix();
+                haulageRenderer.setSize(container.clientWidth, container.clientHeight);
+            });
+            
+            // Reset view button
+            document.getElementById('resetHaulageView').addEventListener('click', () => {
+                haulageCamera.position.set(0, 10, 25);
+                haulageControls.target.set(0, 0, 0);
+                haulageControls.update();
+            });
+            
+            // Toggle graph visualization
+            document.getElementById('toggleGraph').addEventListener('click', () => {
+                show3DGraph = !show3DGraph;
+                graphLines.forEach(line => {
+                    line.visible = show3DGraph;
+                });
+                document.getElementById('toggleGraph').style.background = 
+                    show3DGraph ? 'rgba(59, 130, 246, 0.8)' : 'rgba(30, 41, 59, 0.8)';
+            });
+        }
+        
+        function create3DGraph() {
+            // Clear any existing graph lines
+            graphLines.forEach(line => haulageScene.remove(line));
+            graphLines = [];
+            
+            // Graph parameters
+            const graphWidth = 10;
+            const graphHeight = 5;
+            const graphDepth = 10;
+            const graphPosition = { x: 0, y: -1, z: 0 };
+            
+            // Create axes
+            const axesMaterial = new THREE.LineBasicMaterial({ color: 0xffffff, transparent: true, opacity: 0.5 });
+            
+            // X-axis (red)
+            const xAxisGeometry = new THREE.BufferGeometry().setFromPoints([
+                new THREE.Vector3(0, 0, 0),
+                new THREE.Vector3(graphWidth, 0, 0)
+            ]);
+            const xAxis = new THREE.Line(xAxisGeometry, axesMaterial);
+            xAxis.position.set(graphPosition.x - graphWidth/2, graphPosition.y, graphPosition.z);
+            haulageScene.add(xAxis);
+            graphLines.push(xAxis);
+            
+            // Y-axis (green)
+            const yAxisGeometry = new THREE.BufferGeometry().setFromPoints([
+                new THREE.Vector3(0, 0, 0),
+                new THREE.Vector3(0, graphHeight, 0)
+            ]);
+            const yAxis = new THREE.Line(yAxisGeometry, axesMaterial);
+            yAxis.position.set(graphPosition.x - graphWidth/2, graphPosition.y, graphPosition.z);
+            haulageScene.add(yAxis);
+            graphLines.push(yAxis);
+            
+            // Z-axis (blue)
+            const zAxisGeometry = new THREE.BufferGeometry().setFromPoints([
+                new THREE.Vector3(0, 0, 0),
+                new THREE.Vector3(0, 0, -graphDepth)
+            ]);
+            const zAxis = new THREE.Line(zAxisGeometry, axesMaterial);
+            zAxis.position.set(graphPosition.x - graphWidth/2, graphPosition.y, graphPosition.z);
+            haulageScene.add(zAxis);
+            graphLines.push(zAxis);
+            
+            // Create grid lines
+            const gridMaterial = new THREE.LineBasicMaterial({ color: 0x555555, transparent: true, opacity: 0.3 });
+            
+            // X grid lines
+            for (let i = 1; i <= 10; i++) {
+                const gridGeometry = new THREE.BufferGeometry().setFromPoints([
+                    new THREE.Vector3(0, 0, -i),
+                    new THREE.Vector3(graphWidth, 0, -i)
+                ]);
+                const gridLine = new THREE.Line(gridGeometry, gridMaterial);
+                gridLine.position.set(graphPosition.x - graphWidth/2, graphPosition.y, graphPosition.z);
+                haulageScene.add(gridLine);
+                graphLines.push(gridLine);
+            }
+            
+            // Y grid lines
+            for (let i = 1; i <= 5; i++) {
+                const gridGeometry = new THREE.BufferGeometry().setFromPoints([
+                    new THREE.Vector3(0, i, 0),
+                    new THREE.Vector3(graphWidth, i, 0)
+                ]);
+                const gridLine = new THREE.Line(gridGeometry, gridMaterial);
+                gridLine.position.set(graphPosition.x - graphWidth/2, graphPosition.y, graphPosition.z);
+                haulageScene.add(gridLine);
+                graphLines.push(gridLine);
+            }
+            
+            // Initial data points for gas (green) and dust (yellow)
+            const gasLineMaterial = new THREE.LineBasicMaterial({ color: 0x00ff00 });
+            const dustLineMaterial = new THREE.LineBasicMaterial({ color: 0xf5a623 });
+            
+            const gasPoints = [];
+            const dustPoints = [];
+            
+            for (let i = 0; i <= 10; i++) {
+                gasPoints.push(new THREE.Vector3(i, 0, -i));
+                dustPoints.push(new THREE.Vector3(i, 0, -i));
+            }
+            
+            const gasLineGeometry = new THREE.BufferGeometry().setFromPoints(gasPoints);
+            const dustLineGeometry = new THREE.BufferGeometry().setFromPoints(dustPoints);
+            
+            const gasLine = new THREE.Line(gasLineGeometry, gasLineMaterial);
+            const dustLine = new THREE.Line(dustLineGeometry, dustLineMaterial);
+            
+            gasLine.position.set(graphPosition.x - graphWidth/2, graphPosition.y, graphPosition.z);
+            dustLine.position.set(graphPosition.x - graphWidth/2, graphPosition.y, graphPosition.z);
+            
+            haulageScene.add(gasLine);
+            haulageScene.add(dustLine);
+            
+            graphLines.push(gasLine, dustLine);
+            
+            // Store references for animation
+            haulageScene.userData.gasLine = gasLine;
+            haulageScene.userData.dustLine = dustLine;
+            haulageScene.userData.gasPoints = gasPoints;
+            haulageScene.userData.dustPoints = dustPoints;
+        }
+        
+        function update3DGraph(gasValue, dustValue) {
+            const gasLine = haulageScene.userData.gasLine;
+            const dustLine = haulageScene.userData.dustLine;
+            const gasPoints = haulageScene.userData.gasPoints;
+            const dustPoints = haulageScene.userData.dustPoints;
+            
+            // Shift all points back in Z (time)
+            for (let i = 0; i < gasPoints.length - 1; i++) {
+                gasPoints[i].z = gasPoints[i+1].z;
+                gasPoints[i].y = gasPoints[i+1].y;
+                
+                dustPoints[i].z = dustPoints[i+1].z;
+                dustPoints[i].y = dustPoints[i+1].y;
+            }
+            
+            // Add new data point at the end
+            const lastIndex = gasPoints.length - 1;
+            gasPoints[lastIndex].z = -10; // Time axis (fixed)
+            gasPoints[lastIndex].y = gasValue * 3; // Scale gas value to fit graph
+            
+            dustPoints[lastIndex].z = -10; // Time axis (fixed)
+            dustPoints[lastIndex].y = dustValue * 2; // Scale dust value to fit graph
+            
+            // Update geometries
+            gasLine.geometry.setFromPoints(gasPoints);
+            dustLine.geometry.setFromPoints(dustPoints);
+        }
+        
+        function createMineCartGeometry() {
+            const group = new THREE.Group();
+            
+            // Base
+            const baseGeometry = new THREE.BoxGeometry(4, 1.5, 3);
+            const base = new THREE.Mesh(baseGeometry);
+            base.position.y = 0.75;
+            group.add(base);
+            
+            // Walls
+            const wallGeometry = new THREE.BoxGeometry(4, 1, 0.1);
+            const frontWall = new THREE.Mesh(wallGeometry);
+            frontWall.position.set(0, 1.5, 1.45);
+            group.add(frontWall);
+            
+            const backWall = new THREE.Mesh(wallGeometry);
+            backWall.position.set(0, 1.5, -1.45);
+            group.add(backWall);
+            
+            const sideWallGeometry = new THREE.BoxGeometry(0.1, 1, 2.8);
+            const leftWall = new THREE.Mesh(sideWallGeometry);
+            leftWall.position.set(-1.95, 1.5, 0);
+            group.add(leftWall);
+            
+            const rightWall = new THREE.Mesh(sideWallGeometry);
+            rightWall.position.set(1.95, 1.5, 0);
+            group.add(rightWall);
+            
+            // Wheels
+            const wheelGeometry = new THREE.CylinderGeometry(0.4, 0.4, 0.3, 16);
+            wheelGeometry.rotateZ(Math.PI / 2);
+            const wheelMaterial = new THREE.MeshStandardMaterial({ color: 0x333333 });
+            
+            for (let i = 0; i < 4; i++) {
+                const x = i < 2 ? -1.5 : 1.5;
+                const z = i % 2 === 0 ? -1 : 1;
+                
+                const wheel = new THREE.Mesh(wheelGeometry, wheelMaterial);
+                wheel.position.set(x, 0.4, z);
+                group.add(wheel);
+            }
+            
+            return group;
+        }
+        
+        // Initialize visualizations when DOM is loaded
+        document.addEventListener('DOMContentLoaded', () => {
+            init3DMine();
+            init3DHaulage();
+        });
+        
+        // ===== GAUGES =====
+        function createGauge(elementId, value, color) {
+            const ctx = document.getElementById(elementId).getContext('2d');
+            
+            new Chart(ctx, {
+                type: 'doughnut',
+                data: {
+                    datasets: [{
+                        data: [value, 100 - value],
+                        backgroundColor: [color, 'rgba(255, 255, 255, 0.1)'],
+                        borderWidth: 0
+                    }]
+                },
+                options: {
+                    cutout: '75%',
+                    rotation: -90,
+                    circumference: 180,
+                    plugins: { legend: { display: false }, tooltip: { enabled: false } }
+                }
+            });
+        }
+        
+        // Initialize gauges
+        createGauge('airflowGauge', 75, '#10b981');
+        createGauge('gasGauge', 85, '#10b981');
+        createGauge('dustGauge', 45, '#f59e0b');
+        createGauge('pressureGauge', 65, '#10b981');
+        
+        // ===== TREND CHARTS =====
+        function generateData(period) {
+            let labels = [];
+            let airflowData = [];
+            let gasData = [];
+            let dustData = [];
+            
+            if (period === 'day') {
+                // 24-hour data
+                for (let i = 0; i < 24; i++) {
+                    labels.push(`${i}:00`);
+                    airflowData.push(100 + 30 * Math.sin(i * Math.PI / 12) + (Math.random() * 10 - 5));
+                    gasData.push(0.5 + 0.5 * Math.sin(i * Math.PI / 8) + (Math.random() * 0.2 - 0.1));
+                    dustData.push(0.8 + 0.6 * Math.sin(i * Math.PI / 6) + (Math.random() * 0.3 - 0.15));
+                }
+            } else if (period === 'week') {
+                // 7-day data
+                labels = ['Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat', 'Sun'];
+                airflowData = labels.map((_, i) => 100 + (i * 5) + (Math.random() * 15 - 7.5));
+                gasData = labels.map((_, i) => 0.5 + (i * 0.1) + (Math.random() * 0.3 - 0.15));
+                dustData = labels.map((_, i) => 0.8 + (i * 0.2) + (Math.random() * 0.4 - 0.2));
+            } else {
+                // 30-day data
+                for (let i = 1; i <= 30; i++) {
+                    labels.push(`Day ${i}`);
+                    airflowData.push(100 + (i * 0.5) + (Math.random() * 20 - 10));
+                    gasData.push(0.5 + (i * 0.05) + (Math.random() * 0.2 - 0.1));
+                    dustData.push(0.8 + (i * 0.1) + (Math.random() * 0.3 - 0.15));
+                }
+            }
+            
+            return { labels, airflowData, gasData, dustData };
+        }
+        
+        function createTrendChart(ctx, data, label, color) {
+            return new Chart(ctx, {
+                type: 'line',
+                data: {
+                    labels: data.labels,
+                    datasets: [{
+                        label: label,
+                        data: data.airflowData || data.gasData || data.dustData,
+                        borderColor: color,
+                        backgroundColor: color.replace(')', ', 0.1)'),
+                        borderWidth: 3,
+                        tension: 0.4,
+                        fill: true,
+                        pointRadius: 0,
+                        pointHoverRadius: 5
+                    }]
+                },
+                options: {
+                    responsive: true,
+                    maintainAspectRatio: false,
+                    scales: {
+                        y: { 
+                            grid: { color: 'rgba(255, 255, 255, 0.1)' },
+                            ticks: { color: 'rgba(255, 255, 255, 0.6)' }
+                        },
+                        x: { 
+                            grid: { color: 'rgba(255, 255, 255, 0.1)' },
+                            ticks: { color: 'rgba(255, 255, 255, 0.6)' }
+                        }
+                    },
+                    plugins: {
+                        legend: { display: false },
+                        tooltip: { 
+                            mode: 'index', 
+                            intersect: false,
+                            backgroundColor: 'rgba(30, 41, 59, 0.9)',
+                            titleColor: '#ffffff',
+                            bodyColor: 'rgba(255, 255, 255, 0.8)',
+                            borderColor: 'rgba(255, 255, 255, 0.1)',
+                            borderWidth: 1
+                        }
+                    }
+                }
+            });
+        }
+        
+        // Initialize charts with daily data
+        const initialData = generateData('day');
+        
+        const airflowCtx = document.getElementById('airflowTrend').getContext('2d');
+        const gasCtx = document.getElementById('gasTrend').getContext('2d');
+        const dustCtx = document.getElementById('dustTrend').getContext('2d');
+        
+        const airflowChart = createTrendChart(airflowCtx, { labels: initialData.labels, airflowData: initialData.airflowData }, 'Airflow (m³/s)', '#3b82f6');
+        const gasChart = createTrendChart(gasCtx, { labels: initialData.labels, gasData: initialData.gasData }, 'Gas (%)', '#ef4444');
+        const dustChart = createTrendChart(dustCtx, { labels: initialData.labels, dustData: initialData.dustData }, 'Dust (mg/m³)', '#f59e0b');
+        
+        // ===== CHANGE TIME PERIOD =====
+        function changeTrendPeriod(period) {
+            // Update active button
+            document.querySelectorAll('.time-period-btn').forEach(btn => btn.classList.remove('active'));
+            event.target.classList.add('active');
+            
+            // Generate new data
+            const newData = generateData(period);
+            
+            // Update charts
+            airflowChart.data.labels = newData.labels;
+            airflowChart.data.datasets[0].data = newData.airflowData;
+            airflowChart.update();
+            
+            gasChart.data.labels = newData.labels;
+            gasChart.data.datasets[0].data = newData.gasData;
+            gasChart.update();
+            
+            dustChart.data.labels = newData.labels;
+            dustChart.data.datasets[0].data = newData.dustData;
+            dustChart.update();
+        }
+        
+        // ===== LEVEL NAVIGATION =====
+        document.querySelectorAll('.level-link').forEach(link => {
+            link.addEventListener('click', function(e) {
+                e.preventDefault();
+                
+                // Update active link
+                document.querySelectorAll('.level-link').forEach(l => l.classList.remove('active'));
+                this.classList.add('active');
+                
+                // Update 3D visualization (in a real app, this would load new level data)
+                const levelInfo = this.textContent.split('(');
+                const levelName = levelInfo[0].trim();
+                const sectionName = levelInfo[1].replace(')', '');
+                
+                const infoBox = document.querySelector('.mine-level-info:first-of-type');
+                infoBox.querySelector('h2').textContent = `${levelName} - ${sectionName}`;
+                
+                // Simulate different ventilation parameters for different levels
+                const levelIndex = Array.from(document.querySelectorAll('.level-link')).indexOf(this);
+                const airflow = 80 + levelIndex * 5 + Math.random() * 20;
+                const velocity = 1.5 + levelIndex * 0.1 + Math.random() * 0.5;
+                const pressure = 1.0 + levelIndex * 0.05 + Math.random() * 0.2;
+                const temp = 20 + levelIndex * 0.5 + Math.random() * 2;
+                
+                infoBox.querySelector('p').textContent = 
+                    `Airflow: ${airflow.toFixed(0)} m³/s | Velocity: ${velocity.toFixed(1)} m/s\n` +
+                    `Pressure: ${pressure.toFixed(1)} kPa | Temp: ${temp.toFixed(0)}°C`;
+                
+                // Update alerts to reflect current level
+                const alerts = document.querySelectorAll('.alert-message');
+                alerts[0].textContent = `Elevated dust levels in ${sectionName} (${levelName})`;
+                alerts[1].textContent = `Ventilation fan #3 reduced efficiency in ${levelName}`;
+                alerts[2].textContent = `Temperature fluctuation in ${levelName} - ${sectionName}`;
+                
+                // Update gauges
+                document.querySelector('.gauge-value:nth-of-type(1)').textContent = `${airflow.toFixed(0)} m³/s`;
+                document.querySelector('.gauge-value:nth-of-type(2)').textContent = `${(0.5 + levelIndex * 0.05).toFixed(1)}%`;
+                document.querySelector('.gauge-value:nth-of-type(3)').textContent = `${(0.8 + levelIndex * 0.1).toFixed(1)} mg/m³`;
+                document.querySelector('.gauge-value:nth-of-type(4)').textContent = `${pressure.toFixed(1)} kPa`;
+                
+                // Update gauge colors based on simulated values
+                const gasStatus = (0.5 + levelIndex * 0.05) > 0.8 ? 'status-warning' : 'status-good';
+                const dustStatus = (0.8 + levelIndex * 0.1) > 1.3 ? 'status-danger' : 
+                                  (0.8 + levelIndex * 0.1) > 1.0 ? 'status-warning' : 'status-good';
+                
+                document.querySelectorAll('.gauge-status')[1].className = `gauge-status ${gasStatus}`;
+                document.querySelectorAll('.gauge-status')[2].className = `gauge-status ${dustStatus}`;
+            });
+        });
+    </script>
+</body>
+</html>
